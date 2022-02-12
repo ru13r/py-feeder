@@ -1,0 +1,6 @@
+feedparser>=6.0.8
+spacy>=3.2.2
+funcy>=1.17
+sty>=1.0.4
+sklearn>=0.0
+scikit-learn>=1.0.2
