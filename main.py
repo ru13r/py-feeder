@@ -1,6 +1,9 @@
 # utilities
+import logging
+
 from funcy import *
 from sty import ef, fg
+from collections import Counter
 
 # feed parser
 import feedparser
@@ -17,6 +20,7 @@ lfilter = curry(lfilter)
 lpluck_attr = curry(lpluck_attr)
 take = curry(take)
 group_by = curry(group_by)
+lcat = curry(lcat)
 
 # load russian language model
 nlp = spacy.load("ru_core_news_md")
@@ -42,11 +46,14 @@ def select(attributes, entries):
 def add_keywords(entry):
     # Get list of unique lemmas for the string
     # String -> [String]
+    custom_stop_words = ['назвать', 'заявить', 'сообщить', 'объявить', 'обсудить', 'называть',
+                         'рассказать', 'прокомментировать', 'год', 'месяц', 'призвать']
     get_keywords = compose(
         ' '.join,
         distinct,
         lpluck_attr('lemma_'),
-        lfilter(lambda t: t.pos_ in ['PROPN', 'NOUN']),
+        lfilter(lambda t: not(t.lemma_ in custom_stop_words)),
+        lfilter(lambda t: t.pos_ in ['PROPN', 'NOUN', 'VERB']),
         lfilter(lambda t: not (t.is_stop | t.is_punct)),
         lambda doc: [token for token in doc],
         nlp,
@@ -56,14 +63,25 @@ def add_keywords(entry):
 
 # tag each entry with 'cluster' number
 # [Entries] -> [Entries]
+@log_enters(print)
 def clusterize(entries):
     clusters = compose(
-        SpectralClustering(80).fit_predict,
+        SpectralClustering(75).fit_predict,
         lambda xs: [[x1.similarity(x2) for x1 in xs] for x2 in xs],
-        walk(nlp),
-        lpluck('keywords')
+        walk(nlp),              # TODO optimise
+        lpluck('keywords')      # TODO remove double call to lpluck
     )
     return [dict(d, **{'cluster': v}) for v, d in zip(clusters(entries), entries)]
+
+
+@log_enters(print)
+def top_words(entries):
+    return compose(
+        Counter,
+        lambda x: x.split(' '),
+        ' '.join,
+        lpluck('keywords'),
+    )(entries).most_common(100)
 
 
 # Printing entry titles to console
@@ -85,7 +103,8 @@ print_entries = compose(
 print_clusters = compose(
     '\n\n'.join,
     walk(print_entries),
-    lambda d: d.values()
+    lambda d: d.values(),
+    group_by(lambda x: x['cluster']),
 )
 
 
@@ -97,16 +116,14 @@ def main():
         'https://www.vedomosti.ru/rss/news',
         'https://russian.rt.com/rss'
     ]
-    output = compose(
-        print_clusters,
-        group_by(lambda x: x['cluster']),
+    clustered_feeds = compose(
         clusterize,
         walk(add_keywords),
         select(['title']),
         load_rss
     )(feeds)
-    print(output)
-
+    print(print_clusters(clustered_feeds))
+    print(top_words(clustered_feeds))
 
 if __name__ == '__main__':
     main()
