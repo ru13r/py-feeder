@@ -6,7 +6,7 @@ Libraries used:
 * [spacy](https://spacy.io/) for lemmatization
 * [scikit-learn](https://scikit-learn.org/stable/index.html) for clustering
 
-###Installation
+### Installation
 Clone the repository.
 ```commandline
 git clone https://github.com/ru13r/py-feeder
