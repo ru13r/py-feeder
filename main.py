@@ -12,6 +12,10 @@ import feedparser
 import spacy
 from sklearn.cluster import SpectralClustering
 
+# wordcloud display
+import matplotlib.pyplot as plt
+from wordcloud import WordCloud
+
 
 # currying lib functions for composition
 walk = curry(walk)
@@ -81,7 +85,7 @@ def top_words(entries):
         lambda x: x.split(' '),
         ' '.join,
         lpluck('keywords'),
-    )(entries).most_common(100)
+    )(entries)
 
 
 # Printing entry titles to console
@@ -107,6 +111,23 @@ print_clusters = compose(
     group_by(lambda x: x['cluster']),
 )
 
+def show_word_cloud(entries):
+    text = compose(
+        ' '.join,
+        # lfilter(lambda w: not (w in ['украина', 'россия'])),
+        lambda x: x.split(' '),
+        ' '.join,
+        lpluck('keywords'),
+    )(entries)
+    wordcloud = WordCloud(relative_scaling=0.2,
+                          background_color='white',
+                          width=1600,
+                          height=1080,
+                          ).generate(text)
+    plt.imshow(wordcloud)
+    plt.axis("off")
+    plt.show()
+
 
 def main():
     feeds = [
@@ -124,6 +145,8 @@ def main():
     )(feeds)
     print(print_clusters(clustered_feeds))
     print(top_words(clustered_feeds))
+    show_word_cloud(clustered_feeds)
+
 
 if __name__ == '__main__':
     main()
