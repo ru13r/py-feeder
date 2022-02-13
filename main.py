@@ -25,7 +25,7 @@ group_by = curry(group_by)
 lcat = curry(lcat)
 
 # load russian language model
-nlp = spacy.load("ru_core_news_lg")
+nlp = spacy.load("ru_core_news_md")
 
 # List of feeds URLs -> List of Entries
 load_rss = compose(
