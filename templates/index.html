@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>pyFeedReader</title>
+</head>
+<body>
+{% for cluster in clusters.values() %}
+<ul>
+    {% for entry in cluster %}
+        <li><a href="{{ entry.link }}">{{ entry.title }}</a></li>
+    {% endfor %}
+</ul>
+{% endfor %}
+
+
+</body>
+</html>
