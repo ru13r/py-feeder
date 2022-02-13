@@ -1,9 +1,5 @@
-# utilities
-import logging
-
 from funcy import *
 from sty import ef, fg
-from collections import Counter
 
 # feed parser
 import feedparser
@@ -17,7 +13,6 @@ from jinja2 import Environment, FileSystemLoader
 import os
 
 # wordcloud display
-import matplotlib.pyplot as plt
 from wordcloud import WordCloud
 
 # currying lib functions for composition
@@ -30,7 +25,7 @@ group_by = curry(group_by)
 lcat = curry(lcat)
 
 # load russian language model
-nlp = spacy.load("ru_core_news_md")
+nlp = spacy.load("ru_core_news_lg")
 
 # List of feeds URLs -> List of Entries
 load_rss = compose(
@@ -53,7 +48,7 @@ def add_keywords(entry):
     # Get list of unique lemmas for the string
     # String -> [String]
     custom_stop_words = ['назвать', 'заявить', 'сообщить', 'объявить', 'обсудить', 'называть',
-                         'рассказать', 'прокомментировать', 'год', 'месяц', 'призвать']
+                         'рассказать', 'прокомментировать', 'год', 'месяц', 'призвать', 'россиянин']
     get_keywords = compose(
         ' '.join,
         distinct,
@@ -69,25 +64,35 @@ def add_keywords(entry):
 
 # tag each entry with 'cluster' number
 # [Entries] -> [Entries]
-@log_enters(print)
+@curry
 def clusterize(entries):
-    clusters = compose(
-        SpectralClustering(150).fit_predict,
+    max_size = 15   # maximum cluster size
+    avg_size = 4    # expected average cluster size
+
+    # group :: [Entries (dicts)] -> defaultDict
+    group = group_by(lambda x: x['cluster'])
+
+    # cluster_nums :: [Entries (dicts)] -> [Int32]
+    cluster_nums = compose(
+        SpectralClustering(len(entries) // avg_size).fit_predict,
         lambda xs: [[x1.similarity(x2) for x1 in xs] for x2 in xs],
-        walk(nlp),  # TODO optimise
-        lpluck('keywords')  # TODO remove double call to lpluck
+        walk(nlp),              # TODO optimise
+        lpluck('keywords'),     # TODO remove second call to lpluck
     )
-    return [dict(d, **{'cluster': v}) for v, d in zip(clusters(entries), entries)]
 
+    clusters = group([dict(d, **{'cluster': v}) for v, d in zip(cluster_nums(entries), entries)])
+    # iterate with sub-clusters larger than max_size
+    large_clusters = {k: v for (k, v) in clusters.items() if len(v) > max_size}
+    clusters = {k: v for (k, v) in clusters.items() if not (k in large_clusters)}
+    max_key = max(clusters)
 
-@log_enters(print)
-def top_words(entries):
-    return compose(
-        Counter,
-        lambda x: x.split(' '),
-        ' '.join,
-        lpluck('keywords'),
-    )(entries)
+    for subcluster in large_clusters.values():
+        subcluster = clusterize(subcluster)
+        subcluster = {(k + max_key + 1): v for (k, v) in subcluster.items()}
+        max_key = max(subcluster)
+        clusters = dict(list(clusters.items()) + list(subcluster.items()))
+
+    return clusters
 
 
 # Printing entry titles to console
@@ -95,8 +100,6 @@ def top_words(entries):
 def prettify(entry):
     return fg.blue + '[' + str(entry['cluster']) + '] ' + fg.rs + \
            ef.b + entry['title'] + ef.rs
-    # + '\n' + ef.dim + fill(entry['summary']) + ef.dim
-    # + '\n' + '[' + ef.dim + entry['keywords'] + ef.dim + ']'
 
 
 # Prepare a printable string
@@ -105,46 +108,48 @@ print_entries = compose(
     '\n'.join,
     walk(prettify)
 )
-
 print_clusters = compose(
     '\n\n'.join,
     walk(print_entries),
     lambda d: d.values(),
-    group_by(lambda x: x['cluster']),
 )
 
 
-def show_word_cloud(entries):
+def render_word_cloud(clusters):
+    # [Entries] -> String
+
     text = compose(
         ' '.join,
-        # lfilter(lambda w: not (w in ['украина', 'россия'])),
         lambda x: x.split(' '),
         ' '.join,
         lpluck('keywords'),
-    )(entries)
-    wordcloud = WordCloud(relative_scaling=0.2,
+        flatten,
+    )(clusters.values())
+    wordcloud = WordCloud(relative_scaling=0.5,
                           background_color='white',
-                          width=1600,
-                          height=1080,
+                          width=750,
+                          height=750,
                           ).generate(text)
-    plt.imshow(wordcloud)
-    plt.axis("off")
-    plt.show()
+    return wordcloud.to_svg(embed_font=True)
 
 
-def render_html(entries):
-    clusters = group_by(lambda x: x['cluster'])(entries)
-
+def render_html(clusters):
     root = os.path.dirname(os.path.abspath(__file__))
     templates_dir = os.path.join(root, 'templates')
     env = Environment(loader=FileSystemLoader(templates_dir))
     template = env.get_template('index.html')
-    filename = os.path.join(root, 'output', 'index.html')
 
-    with open(filename, 'w') as fh:
+    directory = os.path.join(root, 'output')
+    file_html = os.path.join(directory, 'index.html')
+    file_svg = os.path.join(directory, 'wordcloud.svg')
+
+    svg = render_word_cloud(clusters)
+    with open(file_html, 'w') as fh:
         fh.write(template.render(
             clusters=clusters,
         ))
+    with open(file_svg, "w+") as fh:
+        fh.write(svg)
 
 
 def main():
@@ -153,7 +158,10 @@ def main():
         'https://news.ru/rss/type/post/',
         'https://ria.ru/export/rss2/archive/index.xml',
         'https://www.vedomosti.ru/rss/news',
-        'https://russian.rt.com/rss'
+        'https://russian.rt.com/rss',
+        'http://static.feed.rbc.ru/rbc/logical/footer/news.rss',
+        'https://www.kommersant.ru/RSS/main.xml',
+        'https://www.bfm.ru/news.rss?type=news',
     ]
     clustered_feeds = compose(
         clusterize,
@@ -162,8 +170,6 @@ def main():
         load_rss
     )(feeds)
     print(print_clusters(clustered_feeds))
-    #print(top_words(clustered_feeds))
-    #show_word_cloud(clustered_feeds)
     render_html(clustered_feeds)
 
 
