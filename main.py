@@ -48,13 +48,13 @@ def add_keywords(entry):
     # Get list of unique lemmas for the string
     # String -> [String]
     custom_stop_words = ['назвать', 'заявить', 'сообщить', 'объявить', 'обсудить', 'называть',
-                         'рассказать', 'прокомментировать', 'год', 'месяц', 'призвать', 'россиянин']
+                         'рассказать', 'прокомментировать', 'год', 'месяц', 'призвать', 'россиянин', 'россия']
     get_keywords = compose(
         ' '.join,
         distinct,
         lpluck_attr('lemma_'),
         lfilter(lambda t: not (t.lemma_ in custom_stop_words)),
-        lfilter(lambda t: t.pos_ in ['PROPN', 'NOUN', 'VERB']),
+        lfilter(lambda t: t.pos_ in ['PROPN', 'NOUN']),
         lfilter(lambda t: not (t.is_stop | t.is_punct)),
         lambda doc: [token for token in doc],
         nlp,
@@ -66,7 +66,7 @@ def add_keywords(entry):
 # [Entries] -> [Entries]
 @curry
 def clusterize(entries):
-    max_size = 15   # maximum cluster size
+    max_size = 10   # maximum cluster size
     avg_size = 4    # expected average cluster size
 
     # group :: [Entries (dicts)] -> defaultDict
